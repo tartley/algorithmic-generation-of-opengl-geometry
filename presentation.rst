@@ -396,35 +396,7 @@ First Light
 Shape Factories
 ---------------
 
-Now let's use our infrastructure for some fun!
-
-.. sourcecode:: python
-
-    def Tetrahedron(edge, face_colors):
-        size = edge / sqrt(2)/2
-        verts = [
-            (+size, +size, +size),   # v0
-            (-size, -size, +size),   # v1
-            (-size, +size, -size),   # v2
-            (+size, -size, -size), ] # v3
-        faces = [
-            [0, 2, 1],  # f0
-            [1, 3, 0],  # f1
-            [2, 3, 1],  # f2
-            [0, 3, 2] ] # f3
-        return Shape(verts, faces, face_colors)
-
-
-Tetrahedron
------------
-
-.. image:: images/screen-tetrahedron.png
-    :width: 900
-    :height: 600
-
-
-Cube
-----
+So now we have our infrastructure. Let's stretch its legs.
 
 .. sourcecode:: python
 

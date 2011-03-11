@@ -223,40 +223,21 @@ Step 2: Denormalise vertices
 .. sourcecode:: python
 
     def shape_to_glyph(positions, faces, colors):
-        vertices = []
-        for face, color in zip(faces, colors):
-            new_indices = {}
-            for old_index in face:
-              new_indices[old_index] = len(vertices)
-              vertex = chain(
-                  positions[old_index],
-                  color,
-                  get_normal(positions, face)
-              )
-              vertices.append(vertex)
-
-              # cont...
-
-.. class:: handout
-
-    x
-
-
-Step 2: Denormalise vertices
-----------------------------
-
-.. sourcecode:: python
-
-    def shape_to_glyph(positions, faces, colors):
-        indices = []
-        for face, color in zip(faces, colors):
-
-            # ...cont
-
-            for old_index in tessellate(face):
-                indices.append(
-                    new_indices[old_index]
-                )
+       vertices = []
+       indices = []
+       for face, color in zip(faces, colors):
+          new_indices = {}
+          for old_index in face:
+             new_indices[old_index] = len(vertices)
+             vertices.append( chain(
+                positions[old_index],
+                color,
+                get_normal(positions, face)
+             ) )
+          for old_index in tessellate(face):
+             indices.append(
+                new_indices[old_index]
+             )
 
 .. class:: handout
 
@@ -307,9 +288,9 @@ Step 3: Tessellate
 
     def tessellate(face):
         '''
-        Break the given face into triangles.
+        Break the given face into chained triangles.
         e.g. [0, 1, 2, 3, 4] ->
-             [[0, 1, 2], [0, 2, 3], [0, 3, 4]]
+             [0, 1, 2,  0, 2, 3,  0, 3, 4]
         Does not work on concave faces.
         '''
         return (
@@ -347,8 +328,13 @@ Step 4: Flatten, ctypes, bind
     ]
     indices = [0, 1, 2,  3, 4, 5,  5, 4, 6]
 
-- Put into ctypes arrays
-- Bind them to OpenGL VBOs (optional)
+Put into ctypes arrays, bind to OpenGL VBO::
+
+    self.vbo = vbo.VBO(
+        array(vertices, 'f'),
+        usage='GL_STATIC_DRAW'
+    )
+
 
 .. class:: handout
 
@@ -364,30 +350,24 @@ Step 5: Render
 
 .. sourcecode:: python
 
-    def draw(self, vao, indices):
-        glBindVertexArray(vao)
+    def draw(self, glyph):
+        glBindVertexArray(glyph.vao)
         glDrawElements(
             GL_TRIANGLES,
-            len(indices),
+            len(glyph.indices),
             GL_UNSIGNED_SHORT,
-            indices
+            glyph.indices
         )
 
-.. class:: handout
-
-   Everything up to this point can be done once, at application start-up,
-   or when the geometry is created.
-   This is the only step that needs doing every frame.
-
-
-First Light
------------
-
-.. image:: images/screen-triangle-square.png
-    :width: 900
-    :height: 600
+Demo: Red triangle, yellow square
 
 .. class:: handout
+
+    Everything up to this point can be done once, at application start-up,
+    or when the geometry is created.
+    This is the only step that needs doing every frame.
+    The vao is an integer, it's an opaque handle to the vertex array, which
+    has been uploaded to the graphics card memory.
 
     So. It's been a bit of a slog to get here, but finally, we now in a
     position to run this code and get some visuals out.
@@ -400,20 +380,19 @@ So now we have our infrastructure. Let's stretch its legs.
 
 .. sourcecode:: python
 
-    def Cube(edge, face_colors=None):
-        e2 = edge/2
-        verts = list(
-            product(* repeat([-e2, +e2], 3) )
+    def Cube(edge, colors):
+        return Shape(
+            vertices=(
+                product(* repeat([-e/2, +e/2], 3) )
+            ),
+            faces = [ [0, 1, 3, 2],    # left
+                      [4, 6, 7, 5],    # right
+                      [7, 3, 1, 5],    # front
+                      [0, 2, 6, 4],    # back
+                      [3, 7, 6, 2],    # top
+                      [1, 0, 4, 5], ], # bottom
+            colors=colors
         )
-        faces = [
-            [0, 1, 3, 2], # left
-            [4, 6, 7, 5], # right
-            [7, 3, 1, 5], # front
-            [0, 2, 6, 4], # back
-            [3, 7, 6, 2], # top
-            [1, 0, 4, 5], # bottom
-        ]
-        return Shape(verts, faces, face_colors)
 
 .. class:: handout
 
@@ -538,10 +517,12 @@ Using a Mover
 
 .. sourcecode:: python
 
-    world.add( GameItem(
-        shape=Cube(1, repeat(Color.Red)),
-        update=Orbit(distance=20, speed=4),
-    ) )
+    world.add(
+        GameItem(
+            shape=Cube(1, repeat(Color.Red)),
+            update=Orbit(distance=20, speed=4),
+        )
+    )
 
     # then, in world.update():
     for item in self.items:
@@ -549,8 +530,6 @@ Using a Mover
             item.update(item, self.time)
    
 Demo of movers
-
-TODO: create this demo
 
 .. class:: handout
 
@@ -565,12 +544,12 @@ Composite shapes
     class MultiShape(object):
 
         def __init__(self):
-            self.children = []
-            self.matrices = []
+            self._children = []
 
-        def add(self, child, pos=None, orient=None):
-            self.children.append(child)
-            self.matrices.append(Matrix(pos, orient))
+        def add(self, shape, pos=None, orient=None):
+            self._children.append(
+                (shape, Matrix(pos, orient))
+            )
 
 .. class:: handout
 
@@ -589,20 +568,23 @@ Composite shapes
     to the centre of the car.
     
     
-Generating MultiShape Vertices
-------------------------------
-
-Class MultiShape continued...
+Generating Vertices
+-------------------
 
 .. sourcecode:: python
 
-    @property
-    def vertices(self):
-      return (
-        matrix.transform(vertex)
-        for idx, matrix in enumerate(self.matrices)
-        for vertex in self.children[idx].vertices
-      )
+    class MultiShape(object):
+
+        @property
+        def vertices(self):
+            return (
+                matrix * vertex
+                for child, matrix in self.children
+                for vertex in child.vertices
+            )
+
+Similar properties expose aggregations of the children's faces and
+colors.
 
 .. class:: handout
 
@@ -616,12 +598,10 @@ Class MultiShape continued...
     faces and face_colors, by aggregating those of its child Shapes.
     
 
-Class Diagram
+Object Diagram
 -------------
 
 .. image:: images/class-diagram.png
-    :width: 927
-    :height: 266
 
 
 Demo Some Composite Shapes
@@ -671,4 +651,30 @@ This presentation:
 
 Code:
   https://bitbucket.org/tartley/gloopy
+
+.. class:: handout
+
+    TODO
+
+    Show code for CubeCluster
+    - Demo some sort of cube cluster
+    Show code for BitmapCubeCluster
+    - Demo invader
+    - Many invaders. Moving.
+    When deriving normals, show diagram of a normal vector, plus
+    a picture of an object with and without
+
+    Consider removing the 'after' version of vertex/index box diagrams
+    until we reach the slide where that transformation is complete.
+
+    e.g. on first of the 'step 2:' slides, remove the right hand side,
+    and replace it with something that explains that each vertex needs its
+    own copy of its color and normal
+
+    Collection of 'gems'
+
+    shape modifications don't work on multishapes
+
+    shape modifications don't work on items with a multi-frame list of shapes
+    e.g. invader
 

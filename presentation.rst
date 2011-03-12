@@ -60,7 +60,7 @@ Goal
 Goal
 ----
 
-.. image:: images/fun-stuff.png
+.. image:: images/goal-fun.png
     :width: 900
 
 .. class:: handout
@@ -408,8 +408,8 @@ Demo Cube & Others
 
 .. class:: handout
 
-    Tetrahedron, Cube, Octahedron, Dodecahedron, Icosahedron (Platonic)
-    DualTetrahedron & combinations of all the above.
+    Cube, Octahedron, Dodecahedron, Icosahedron (Platonic)
+    DualTetrahedron
     Space Station.
 
 
@@ -431,9 +431,7 @@ Shapes as an attribute of GameItems
 
     An 'item' is the term I use for a single
     drawable object. Items have a position, an orientation, and a glyph,
-    which is what I call the collection of arrays that OpenGL uses to draw
-    something.
-
+    which is derived from their shape.
     Items don't have any functionality - they are just a dumb collection of
     attributes.
 
@@ -460,7 +458,8 @@ Rendering Multiple Items
 .. class:: handout
 
     So here's our draw function, that gets called every frame. It's very simple
-    and minimal, but it's all you need. Everything you see today is drawn by
+    and minimal, but it's all you need. This is the last tweak we'll need
+    to apply to our renderer. Everything you see today is drawn by
     this inner loop.
 
     We're iterate through all the items. The push and mult matrix
@@ -472,69 +471,13 @@ Rendering Multiple Items
     way of doing this - all the cool kids are passing item.transform into their
     shaders instead these days, we don't care for now, it has the same effect.
 
-    Next we bind a vertex array. This is telling OpenGL where the data is
-    that we want to draw. We'll take a look at that in a second,
+    Next we bind a vertex array object, or VAO. This is just an integer which
+    is an opaque handle to the vertex array, which we passed to OpenGL and
+    has been stored on the graphics card memory.
 
     Then finally, we call DrawElements, which actually draws our object.
 
-
-Moving Shapes
--------------
-
-.. sourcecode:: python
-
-    class Orbit(object):
-
-        def __init__(self, distance, speed, phase=None):
-            self.distance = distance
-            self.speed = speed
-            if phase is None:
-                phase = uniform(0, 2 * pi)
-            self.phase = phase
-
-        def __call__(self, item, time):
-            bearing = time * self.speed + self.phase
-            x = self.distance * sin(bearing)
-            z = self.distance * cos(bearing)
-            item.position = Vec3(x, 0, z)
-
-
-.. class:: handout
-
-    I've already sneakily added a class to move items around in the world, I'm
-    currently using it to move the camera around. We can add an instance of
-    this or similar classes to any item. If it's attached as the item's 'update'
-    attribute, then it will be called between screen refreshes, to move the
-    item around in the world, or spin it.
-
-    Here we see an example of 'orbit', which will orbit the origin. You
-    can imagine more complex behaviours, the one I attached to the camera
-    is called WobblyOrbit
-
-
-Using a Mover
--------------
-
-.. sourcecode:: python
-
-    world.add(
-        GameItem(
-            shape=Cube(1, repeat(Color.Red)),
-            update=Orbit(distance=20, speed=4),
-        )
-    )
-
-    # then, in world.update():
-    for item in self.items:
-        if item.update:
-            item.update(item, self.time)
-   
-Demo of movers
-
-.. class:: handout
-
-    Create some sorts of mover
-
+    Demo all the above shapes, embedded in each other.
 
 Composite shapes
 ----------------
@@ -552,6 +495,8 @@ Composite shapes
             )
 
 .. class:: handout
+
+    The renderloop on the last slide
 
     So this is all well and good, but to create complex shapes this way is
     quite tedious. In addition, rendering each shape independantly, using a
@@ -599,13 +544,15 @@ colors.
     
 
 Object Diagram
--------------
+--------------
 
-.. image:: images/class-diagram.png
+.. image:: images/object-diagram.png
 
 
 Demo Some Composite Shapes
 --------------------------
+
+CubeCluster, CubeCross.
 
 Ring, TriAxisRings, CubeGlob, RgbCubeCluster
 
@@ -677,4 +624,7 @@ Code:
 
     shape modifications don't work on items with a multi-frame list of shapes
     e.g. invader
+
+    Consolidate the styles of the 'object diagram' with the initial diagram
+    of 'infrastructure / fun'
 

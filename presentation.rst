@@ -77,6 +77,7 @@ Shape class
 .. sourcecode:: python
 
     Color = namedtuple('Color', 'r g b a')
+    Vector = namedtuple('Vector', 'x y z')
 
     class Shape(object):
 
@@ -150,6 +151,10 @@ Step 1: Calculate face normals
 .. image:: images/calculate-normals.png
 
 
+Step 1: Calculate face normals
+------------------------------
+
+.. image:: images/normals-with-without.png
 
 Step 1: Calculate face normals
 ------------------------------
@@ -345,12 +350,14 @@ Put into ctypes arrays, bind to OpenGL VBO::
     stuff, so I won't cover it.
 
 
-Step 5: Render
---------------
+Step 5: Draw
+------------
 
 .. sourcecode:: python
 
-    def draw(self, glyph):
+    def draw(self, glyph, transform):
+        glPushMatrix()
+        glMultMatrixf(transform)
         glBindVertexArray(glyph.vao)
         glDrawElements(
             GL_TRIANGLES,
@@ -358,6 +365,32 @@ Step 5: Render
             GL_UNSIGNED_SHORT,
             glyph.indices
         )
+        glPopMatrix()
+
+.. class:: handout
+
+    So here's our draw function, that gets called to draw each glyph. It's very
+    simple and minimal, but it's all you need. This is the last tweak we'll
+    need to apply to our renderer. Everything you see today is drawn by
+    iterating over this innermost draw call.
+
+    The initial matrix calls are to tell OpenGL about the position and
+    orientation of the item we're about to render. The transform param
+    is a 4x4 matrix that represents the combination of the item's position and
+    orientation.
+    
+    Messing with the modelview matrix like this is the traditional old OpenGL
+    way of doing this - all the cool kids are passing item.transform into their
+    shaders instead these days, we don't care for now, it has the same effect.
+
+    Next we bind a vertex array object, or VAO. This is just an integer which
+    is an opaque handle to the vertex array, which we passed to OpenGL and
+    has been stored on the graphics card memory.
+
+    Then finally, we call DrawElements, which actually draws our object.
+
+    Demo: 
+        Platonics all embedded in each other (Gems)
 
 Demo: Red triangle, yellow square
 
@@ -408,76 +441,63 @@ Demo Cube & Others
 
 .. class:: handout
 
-    Cube, Octahedron, Dodecahedron, Icosahedron (Platonic)
+    Demo: 0 to 7: Cube to Space Station
+    Tetrahedron, Cube, Octahedron, Dodecahedron, Icosahedron (Platonic)
     DualTetrahedron
     Space Station.
 
 
-Shapes as an attribute of GameItems
------------------------------------
+Operations on Shape
+-------------------
 
-.. sourcecode:: python
+Now we have our simple Shape class, it's easy to
+write operations that manipulate them.
 
-    class GameItem(object):
-        def __init__(self, ** kwargs):
-            self.__dict__.update(** kwargs)
-
-    world.add( GameItem(
-        shape=Cube(1, repeat(Color.Red)),
-        position=Vector(1, 2, 3),
-    ) )
+* Extrusion
+* Stellation
+* Face subdivision
 
 .. class:: handout
 
-    An 'item' is the term I use for a single
-    drawable object. Items have a position, an orientation, and a glyph,
-    which is derived from their shape.
-    Items don't have any functionality - they are just a dumb collection of
-    attributes.
+    Demo:
+    Extrusion
+    Subdivision
+    Subdivision-Extrusion
+    Subdivision-StellationOut
+    Subdivision-StellationIn
 
 
-Rendering Multiple Items
-------------------------
+Stellation
+----------
 
 .. sourcecode:: python
 
-    def draw(self, world):
-        for item in world.items:
-            glPushMatrix()
-            glMultMatrixf(item.transform)
-            glBindVertexArray(item.glyph.vao)
-            glDrawElements(
-                GL_TRIANGLES,
-                len(item.glyph.indices),
-                GL_UNSIGNED_SHORT,
-                item.glyph.indices
-            )
-            glPopMatrix()
-        glBindVertexArray(0)
+    def stellate_face(shape, face_index, height):
+        face = shape.faces[face_index]
+        
+        # add new vertex, offset from face centroid
+        offset = get_normal(face) * height
+        shape.vertices.append(centroid(face)+offset)
+
+        # replace face with a bunch of new faces
+        new_index = len(shape_vertices) - 1
+        shape.faces.remove(face)
+        shape.faces.extend([
+            [face[i], face[i+1], new_index]
+            for i in xrange(len(face))
+        ])
+
 
 .. class:: handout
 
-    So here's our draw function, that gets called every frame. It's very simple
-    and minimal, but it's all you need. This is the last tweak we'll need
-    to apply to our renderer. Everything you see today is drawn by
-    this inner loop.
+    So these sorts of operations are really simple to write now. You can
+    see the stellate_face operation above, it fits on a single slide.
 
-    We're iterate through all the items. The push and mult matrix
-    calls are to tell OpenGL about the position and orientation of the item
-    we're about to render. The item.transform property is a 4x4 matrix that
-    represents the combination of the item's position and orientation.
-    
-    Messing with the modelview matrix like this is the traditional old OpenGL
-    way of doing this - all the cool kids are passing item.transform into their
-    shaders instead these days, we don't care for now, it has the same effect.
+    Demo:
+    Make a sphere
+    Make a Koch Tetrahedron
+    Make a cubecage thing
 
-    Next we bind a vertex array object, or VAO. This is just an integer which
-    is an opaque handle to the vertex array, which we passed to OpenGL and
-    has been stored on the graphics card memory.
-
-    Then finally, we call DrawElements, which actually draws our object.
-
-    Demo all the above shapes, embedded in each other.
 
 Composite shapes
 ----------------
@@ -496,13 +516,14 @@ Composite shapes
 
 .. class:: handout
 
-    The renderloop on the last slide
-
     So this is all well and good, but to create complex shapes this way is
-    quite tedious. In addition, rendering each shape independantly, using a
-    distinct call to glDrawArrays for each Shape, gets very slow after a few
+    still quite tedious. In addition, each iteration of the renderloop on the
+    last slide is quite slow - those calls to glfunctions are across the ctypes
+    boundary. So rendering each shape independantly, using
+    a distinct call to glDrawArrays for each Shape, gets very slow after a few
     hundred shapes are added. What we really need is a way to compose new
-    shapes out of combinations of the existing ones.
+    shapes out of combinations of the existing ones, and draw the composition
+    in a single draw call.
 
     Introducing MultiShape, the composite shape. As you can see, this is a
     really simple class, it just contains a collection of child shapes,
@@ -549,12 +570,57 @@ Object Diagram
 .. image:: images/object-diagram.png
 
 
-Demo Some Composite Shapes
---------------------------
+.. class:: handout
 
-CubeCluster, CubeCross.
+    Demo composite shapes:
+    CubeCluster, CubeCross.
+    Gems
 
-Ring, TriAxisRings, CubeGlob, RgbCubeCluster
+Ring
+----
+
+.. sourcecode:: python
+
+    def Ring(basic_shape, radius, number):
+        multi = MultiShape()
+        orientation = Orientation()
+        delta_angle = 2 * pi / number
+        while number > 0:
+            number -= 1
+            pos = Vector(
+                radius * sin(delta_angle * number),
+                radius * cos(delta_angle * number),
+                0,
+            )
+            orientation = orientation.roll(delta_angle)
+            multi.add(basic_shape, pos, orientation)
+        return multi
+
+.. class:: handout
+
+    Demo Ring, TriAxisRing
+    
+
+TriAxisRing
+-----------
+
+.. sourcecode:: python
+
+    def TriRings(basic_shape, radius, number):
+        '''
+        Return a new Shape which is composed of three Rings, one around each
+        of the X, Y and Z axes.
+        '''
+        multi = MultiShape()
+        ring = Ring(basic_shape, radius, number)
+        multi.add(ring, orientation=Orientation(Vector.XAxis))
+        multi.add(ring, orientation=Orientation(Vector.YAxis))
+        multi.add(ring, orientation=Orientation(Vector.ZAxis, Vector.XAxis))
+        return multi
+
+.. class:: handout
+    
+    x
 
 
 
@@ -579,52 +645,29 @@ Using Composite Shapes
         return cluster
 
 
-Algorithmic manipulation
-------------------------
+Deriving Shapes from Bitmaps
+----------------------------
 
-Demo: Subdivision, Normalization, Stellation, Extrusion, Koche Tetrahedron
+.. sourcecode:: python
+
+
 
 
 EOF
 ---
 
 PyWeek:
-    Make a Python game in a week competition
-    Starts midnight at start of Sunday 2011/04/03
+    Make a Python game in a week. Competition
+    Starts midnight start of Sunday 2011/04/03
     http://pyweek.org
+
 
 This presentation:
   https://bitbucket.org/tartley/algorithmic-generation-of-geometry
+
 
 Code:
   https://bitbucket.org/tartley/gloopy
 
 .. class:: handout
-
-    TODO
-
-    Show code for CubeCluster
-    - Demo some sort of cube cluster
-    Show code for BitmapCubeCluster
-    - Demo invader
-    - Many invaders. Moving.
-    When deriving normals, show diagram of a normal vector, plus
-    a picture of an object with and without
-
-    Consider removing the 'after' version of vertex/index box diagrams
-    until we reach the slide where that transformation is complete.
-
-    e.g. on first of the 'step 2:' slides, remove the right hand side,
-    and replace it with something that explains that each vertex needs its
-    own copy of its color and normal
-
-    Collection of 'gems'
-
-    shape modifications don't work on multishapes
-
-    shape modifications don't work on items with a multi-frame list of shapes
-    e.g. invader
-
-    Consolidate the styles of the 'object diagram' with the initial diagram
-    of 'infrastructure / fun'
 
